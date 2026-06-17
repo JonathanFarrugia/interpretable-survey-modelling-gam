@@ -44,12 +44,12 @@ The workflow was developed as part of a broader analytical portfolio demonstrati
 ├── results/
 │   ├── GAM_Report_satisfaction_level_sample_report.html
     └── plots/
-│     ├── gam_appraise_satisfaction_level.png
-│     ├── obs_vs_pred_satisfaction_level.png
-│     ├── residuals_satisfaction_level.png
-│     ├── smooth_1.png
-│     ├── smooth_2.png
-│     └── smooth_3.png
+│       ├── gam_appraise_satisfaction_level.png
+│       ├── obs_vs_pred_satisfaction_level.png
+│       ├── residuals_satisfaction_level.png
+│       ├── smooth_1.png
+│       ├── smooth_2.png
+│       └── smooth_3.png
 └── README.md
 ```
 
@@ -262,7 +262,7 @@ results/GAM_Report_satisfaction_level_sample_report.html
 Install required packages:
 
 ```r
-source("requirements.R")
+source("install_packages.R")
 ```
 
 or manually install packages:
