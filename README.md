@@ -43,12 +43,13 @@ The workflow was developed as part of a broader analytical portfolio demonstrati
 │   └── synthetic_training_data.xlsx
 ├── results/
 │   ├── GAM_Report_satisfaction_level_sample_report.html
-│   ├── gam_appraise_satisfaction_level.png
-│   ├── obs_vs_pred_satisfaction_level.png
-│   ├── residuals_satisfaction_level.png
-│   ├── smooth_1.png
-│   ├── smooth_2.png
-│   └── smooth_3.png
+    └── plots/
+│     ├── gam_appraise_satisfaction_level.png
+│     ├── obs_vs_pred_satisfaction_level.png
+│     ├── residuals_satisfaction_level.png
+│     ├── smooth_1.png
+│     ├── smooth_2.png
+│     └── smooth_3.png
 └── README.md
 ```
 
