@@ -1,0 +1,376 @@
+---
+title: "GAM Report - Satisfaction Level"
+output:
+  html_document:
+    toc: true
+    number_sections: false
+    df_print: paged
+    css: styles.css
+params:
+  target: NULL
+  gam_model: NULL
+  numeric_plots: NULL
+  categorical_plots: NULL
+  residuals_plot: NULL
+  obs_vs_pred_plot: NULL
+  smooth_plots: NULL
+  appraise_plot: NULL
+  rmse: NULL
+  ref_levels_df: NULL
+  gvif_tbl: NULL
+  cv_results: NULL
+  cv_summary: NULL
+  categorical_features: NULL
+  importance_tbl: NULL
+---
+
+```{r setup, echo=FALSE, warning=FALSE, message=FALSE}
+library(ggplot2)
+library(knitr)
+library(kableExtra)
+library(gratia)
+library(mgcv)
+library(performance)
+library(dplyr)
+library(tidyr)
+library(tibble)
+
+knitr::opts_chunk$set(
+  echo = FALSE,
+  warning = FALSE,
+  message = FALSE
+)
+```
+
+# Model Performance Metrics
+
+- Number of sessions: `r nobs(params$gam_model)`
+- Adjusted R²: `r round(summary(params$gam_model)$r.sq, 3)`
+- Deviance explained: `r round(summary(params$gam_model)$dev.expl[1], 3)`
+- AIC: `r format(round(AIC(params$gam_model), 2), scientific = FALSE)`
+- RMSE: `r round(params$rmse, 2)`
+
+**Cross-Validated Performance (K-fold CV)**
+
+```{r}
+if (!is.null(params$cv_summary)) {
+
+  kable(
+    params$cv_summary,
+    digits = 3
+  ) %>%
+    kable_styling(
+      full_width = FALSE,
+      position = "left",
+      bootstrap_options = c("striped", "condensed")
+    )
+
+} else {
+  cat("Cross-validation results not provided.")
+}
+```
+
+```{r}
+if (!is.null(params$cv_results)) {
+
+  # Transpose the table
+  cv_results_t <- as.data.frame(t(params$cv_results))
+  cv_results_t <- cv_results_t[-1, ]
+
+  # Optionally rename the columns to preserve fold numbers
+  colnames(cv_results_t) <- paste0("Fold ", seq_len(ncol(cv_results_t)))
+
+  # Print transposed table with kable
+  kable(
+    cv_results_t,
+    digits = 3,
+    caption = "Fold-level RMSE and MAE from K-fold CV"
+  ) %>%
+    kable_styling(
+      full_width = FALSE,
+      position = "left",
+      bootstrap_options = c("striped", "condensed")
+    )
+
+} else {
+  cat("Fold-level CV results not provided.")
+}
+```
+
+# Key Driver Ranking
+
+Comparison of individual deviance (gam.hp) and per session contribution variance.
+
+```{r}
+if (!is.null(params$importance_tbl)) {
+
+  driver_tbl <- params$importance_tbl %>%
+    dplyr::select(
+      covariate,
+      Unique,
+      Average.share,
+      Individual,
+      `I.perc(%)`,
+      TermSD_pct,
+      TermSD_unweighted_pct,
+      TermSD,
+      TermSD_unweighted
+    ) %>%
+    dplyr::mutate(
+      Unique        = round(Unique, 3),
+      Average.share = round(Average.share, 3),
+      Individual    = round(Individual, 3),
+      `I.perc(%)`   = round(`I.perc(%)`, 2),
+      TermSD_pct   = round(TermSD_pct, 2),
+      TermSD_unweighted_pct = round(TermSD_unweighted_pct, 2),
+      TermSD        = round(TermSD, 2),
+      TermSD_unweighted = round(TermSD_unweighted, 2)
+    )
+
+  kable(
+    driver_tbl,
+    caption = paste(
+      "Key drivers sorted by gam.hp output (Perecentage individual contribution - 'I.perc(%)').",
+      "Unique, Average.share, Individual, I.perc(%): Columns from gam.hp hierarchical partitioning.",
+      "TermSD_pct: Relative Share of Standard Deviation of term contributions.",
+      "TermSD: Standard Deviation of term contributions on the response scale (√Var)."
+    )
+  ) %>%
+    kable_styling(
+      full_width = FALSE,
+      position = "left",
+      bootstrap_options = c("striped", "condensed")
+    )
+
+} else {
+  cat("Key driver importance not available.")
+}
+```
+
+# Reference Levels for Categorical Features
+
+```{r}
+kable(params$ref_levels_df) %>%
+  kable_styling(
+    full_width = FALSE,
+    position = "left",
+    bootstrap_options = c("striped", "condensed")
+  )
+```
+
+# Model Specification
+
+```{r}
+formula_str <- attr(params$gam_model, "formula_str")
+```
+**Full GAM formula:**
+`r formula_str`
+
+## GAM Model Summary - Target: `r params$target`
+
+
+```{r}
+sm <- summary(params$gam_model)
+pt <- as.data.frame(sm$p.table)
+pnames <- names(pt)
+
+is_t <- "Pr(>|t|)" %in% pnames
+is_z <- "Pr(>|z|)" %in% pnames
+
+if (is_t) {
+
+  param_tab <- as.data.frame(sm$p.table) %>%
+    tibble::rownames_to_column("Term") %>%
+    mutate(
+      Variable = case_when(
+        Term == "(Intercept)" ~ "(Intercept)",
+        grepl("^year\\d{4}$", Term) ~ "year",
+        TRUE ~ sub("([A-Z].*)$", "", Term)
+      ),
+      Level = case_when(
+        Term == "(Intercept)" ~ NA_character_,
+        grepl("^year(\\d{4})$", Term) ~ sub("^year", "", Term),
+        TRUE ~ sub("^[^A-Z]+", "", Term)
+      ),
+      Level = ifelse(Level == "", NA, Level),
+      Signif = symnum(
+        `Pr(>|t|)`,
+        cutpoints = c(0, 0.001, 0.01, 0.05, 0.1, 1),
+        symbols   = c("***", "**", "*", ".", " ")
+      ),
+      Estimate   = round(Estimate, 2),
+      `Std. Error` = round(`Std. Error`, 2),
+      `t value`  = round(`t value`, 2),
+      `Pr(>|t|)` = formatC(`Pr(>|t|)`, format = "e", digits = 2),
+    ) %>%
+    select(Variable, Level, Estimate, `Std. Error`, `t value`, `Pr(>|t|)`, Signif)
+
+  param_tab <- param_tab %>%
+    dplyr::rename(`p-value` = `Pr(>|t|)`)  
+
+  kable(param_tab,
+        caption = "Parametric effects from the GAM") %>%
+    kable_styling(full_width = FALSE, position = "left",
+                  bootstrap_options = c("striped", "condensed"))
+
+} else if (is_z) {
+
+  param_tab <- as.data.frame(sm$p.table) %>%
+    tibble::rownames_to_column("Term") %>%
+    mutate(
+      Variable = case_when(
+        Term == "(Intercept)" ~ "(Intercept)",
+        grepl("^year\\d{4}$", Term) ~ "year",
+        TRUE ~ sub("([A-Z].*)$", "", Term)
+      ),
+      Level = case_when(
+        Term == "(Intercept)" ~ NA_character_,
+        grepl("^year(\\d{4})$", Term) ~ sub("^year", "", Term),
+        TRUE ~ sub("^[^A-Z]+", "", Term)
+      ),
+      Level = ifelse(Level == "", NA, Level),
+      Signif = symnum(
+        `Pr(>|z|)`,
+        cutpoints = c(0, 0.001, 0.01, 0.05, 0.1, 1),
+        symbols   = c("***", "**", "*", ".", " ")
+      ),
+      Estimate   = round(Estimate, 2),
+      `Std. Error` = round(`Std. Error`, 2),
+      `z value`  = round(`z value`, 2),
+      `Pr(>|z|)` = formatC(`Pr(>|z|)`, format = "e", digits = 2),
+    ) %>%
+    select(Variable, Level, Estimate, `Std. Error`, `z value`, `Pr(>|z|)`, Signif)
+
+  param_tab <- param_tab %>%
+    dplyr::rename(`p-value` = `Pr(>|z|)`)  
+
+  kable(param_tab,
+        caption = "Parametric effects from the GAM") %>%
+    kable_styling(full_width = FALSE, position = "left",
+                  bootstrap_options = c("striped", "condensed"))
+}
+```
+
+```{r}
+smooth_tab <- as.data.frame(sm$s.table) %>%
+  mutate(
+    Signif = symnum(
+      `p-value`,
+      cutpoints = c(0, 0.001, 0.01, 0.05, 0.1, 1),
+      symbols   = c("***", "**", "*", ".", " ")
+    ),
+    edf       = round(edf, 2),
+    F         = round(F, 2),  # nolint
+    `p-value` = formatC(`p-value`, format = "e", digits = 2),
+  ) %>%
+  select(edf, Ref.df, F, `p-value`, Signif)  # nolint
+
+kable(smooth_tab, caption = "Approximate significance of smooth terms") %>%
+  kable_styling(full_width = FALSE, position = "left",
+                bootstrap_options = c("striped", "condensed"))
+```
+Significance codes:  `0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1`
+
+# Smooth Effects
+
+**Spline k-index Diagnostics**
+
+Note: The p-values in the k-index table are different from the smooth-term significance p-values.  
+Higher p-values are desirable because they indicate there is no statistical evidence that increasing `k` would improve the fit.  
+Low p-values suggest `k` may be too small, meaning the smooth might be underfitting.
+
+```{r}
+k_diag <- mgcv::k.check(params$gam_model)
+print(k_diag)
+```
+
+**Plots of smooth effects**
+
+```{r, fig.width=6, fig.height=4}
+if (!is.null(params$smooth_plots)) {
+  for (p in params$smooth_plots) {
+    print(p)
+  }
+} else {
+  cat("Smooth plots not provided.")
+}
+```
+
+# Diagnostic Plots
+
+**Manual Raw Residuals and Observed vs Predicted Plots**
+
+```{r, fig.width=6, fig.height=4}
+params$residuals_plot
+params$obs_vs_pred_plot
+```
+
+**GAM Diagnostics (gratia::appraise)**
+
+```{r}
+if (!is.null(params$appraise_plot)) {
+  print(params$appraise_plot)
+} else {
+  cat("Appraise plot not provided.")
+}
+```
+
+# Multicollinearity Diagnostics
+
+**GVIF Diagnostics**
+
+```{r}
+if (!is.null(params$gvif_tbl)) {
+  params$gvif_tbl %>%
+    dplyr::mutate(
+      GVIF        = round(GVIF, 2),
+      `GVIF_adj`  = round(`GVIF_adj`, 2)
+    ) %>%
+    kable(
+      booktabs = TRUE,
+      caption  = "GVIF and Adjusted GVIF for Parametric Terms"
+    ) %>%
+    kable_styling(
+      full_width = FALSE,
+      position = "left",
+      bootstrap_options = c("striped", "condensed")
+    )
+} else {
+  cat("GVIF not computed for this target (no subcategory collapsing applied).")
+}
+```
+
+**Concurvity / VIF for Smooth Terms**
+
+Note: Adjusted GVIFs account for the number of parameters in each term, making them comparable across terms with different degrees of freedom.   
+For smooth terms, the worst-case concurvity shows the maximum dependence of one smooth on the others.
+
+```{r}
+has_re_smooth <- FALSE
+
+if (!has_re_smooth) {
+  conc_matrix <- mgcv::concurvity(params$gam_model, full = FALSE)$worst
+
+  conc_matrix %>%
+    as.data.frame() %>%
+    tibble::rownames_to_column("Term") %>%
+    dplyr::mutate(
+      dplyr::across(
+        -Term,
+        ~ formatC(.x, format = "e", digits = 2)
+      )
+    ) %>%
+    kable(
+      booktabs = TRUE,
+      caption  = "Worst-case concurvity diagnostics"
+    ) %>%
+    kable_styling(
+      full_width = FALSE,
+      position = "left",
+      bootstrap_options = c("striped", "condensed")
+    )
+
+} else {
+  cat("Concurvity diagnostics skipped: model contains random-effect smooths (bs = 're').")
+}
+```

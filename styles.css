@@ -1,0 +1,26 @@
+/* GLOBAL RESET FOR PAGINATION CONTROL */
+* {
+  break-inside: avoid;
+  break-before: avoid;
+  break-after: avoid;
+}
+
+/* Prevent splitting of key content blocks */
+table, figure, img, pre, blockquote {
+  break-inside: avoid;
+}
+
+/* Avoid headings being stranded at page bottom */
+h1, h2, h3, h4 {
+  break-after: avoid;
+}
+
+/* Keep heading + following content together */
+h1 + *, h2 + *, h3 + *, h4 + * {
+  break-before: avoid;
+}
+
+/* Control large containers (e.g., ggplot outputs) */
+div, section {
+  break-inside: avoid;
+}
